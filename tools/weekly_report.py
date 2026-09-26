@@ -319,7 +319,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("csv", type=Path, help="分析メモのCSV（analytics/posts.csv）")
     parser.add_argument("--end", type=date.fromisoformat, help="集計する週の最終日 YYYY-MM-DD（省略時はCSVの最新日）")
     parser.add_argument("--phase", type=int, default=1, choices=range(1, 5), help="今のフェーズ（1〜4、既定1）")
-    parser.add_argument("--followers", type=int, help="今のフォロワー数")
+    parser.add_argument("--followers", type=int, help="今のフォロワー数（省略時は analytics/followers.csv の最新値）")
+    parser.add_argument("--followers-csv", type=Path, default=Path("analytics/followers.csv"), help=argparse.SUPPRESS)
     parser.add_argument("--note-free-views", type=int, help="無料note2本の合計閲覧（フェーズ2）")
     parser.add_argument("--note-suki", type=int, help="無料note2本の合計スキ（フェーズ2）")
     parser.add_argument("--note-monthly-views", type=int, help="noteの月間閲覧（フェーズ3）")
@@ -328,8 +329,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def latest_followers(path: Path) -> int | None:
+    """fetch_insights.py が毎日記録しているフォロワー数の最新値。"""
+    if not path.exists():
+        return None
+    with path.open(encoding="utf-8-sig", newline="") as f:
+        rows = [r for r in csv.DictReader(f) if (r.get("followers") or "").strip()]
+    return int(rows[-1]["followers"]) if rows else None
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.followers is None:
+        args.followers = latest_followers(args.followers_csv)
     try:
         report = build_report(load_posts(args.csv), args)
     except (DataError, FileNotFoundError) as e:

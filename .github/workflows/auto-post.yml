@@ -1,0 +1,35 @@
+name: auto-post
+
+# 朝・昼・夜の投稿枠のあいだだけ15分おきに動く（cron は UTC。GitHub 側の都合で数分〜十数分遅れることがある）
+#   朝 7:00〜8:45 JST = 22,23時 UTC / 昼 12:00〜12:45 JST = 3時 UTC / 夜 21:00〜22:45 JST = 12,13時 UTC
+on:
+  schedule:
+    - cron: "*/15 22,23,3,12,13 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: threads-write
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # リポジトリ変数 AUTO_POST_ENABLED が true のときだけ本当に投稿する。それ以外は確認だけ
+      - name: 予約キューから投稿
+        env:
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+          LIVE: ${{ vars.AUTO_POST_ENABLED == 'true' && '--live' || '' }}
+          ALLOW_LINKS: ${{ vars.ALLOW_LINKS == 'true' && '--allow-links' || '' }}
+        run: python3 tools/auto_post.py $LIVE $ALLOW_LINKS
+      - name: 投稿済みを記録
+        if: always()
+        run: scripts/commit_and_push.sh "自動投稿の記録" queue analytics/published.csv

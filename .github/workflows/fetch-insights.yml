@@ -1,0 +1,38 @@
+name: fetch-insights
+
+# 毎日 4:30 JST（19:30 UTC）に直近14日の数字を取り込む。月曜は先週（月〜日）の振り返りも作る
+on:
+  schedule:
+    - cron: "30 19 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: threads-write
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    env:
+      THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+      THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Threads の数字を取り込む
+        if: env.THREADS_ACCESS_TOKEN != ''
+        run: python3 tools/fetch_insights.py
+      - name: 月曜は先週の振り返りを作る
+        if: env.THREADS_ACCESS_TOKEN != ''
+        run: |
+          if [ "$(TZ=Asia/Tokyo date +%u)" = "1" ]; then
+            end=$(TZ=Asia/Tokyo date -d yesterday +%F)
+            python3 tools/weekly_report.py analytics/posts.csv --end "$end" -o "reports/$end.md"
+          fi
+      - name: 記録
+        run: scripts/commit_and_push.sh "Threads の数字を取り込み" analytics reports
